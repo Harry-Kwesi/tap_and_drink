@@ -55,12 +55,23 @@ const config: Config = {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
+        // AI Feature keyframes
+        'slide-up-fade': {
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'pulse-glow': {
+          '0%, 100%': { boxShadow: '0 4px 20px rgba(14, 165, 233, 0.35)' },
+          '50%': { boxShadow: '0 4px 30px rgba(14, 165, 233, 0.55), 0 0 40px rgba(14, 165, 233, 0.15)' },
+        },
       },
       animation: {
         ripple: 'ripple 0.6s ease-out forwards',
         wave: 'wave 3s ease-in-out infinite',
         'float-up': 'float-up 1s ease-out forwards',
         shimmer: 'shimmer 2.5s linear infinite',
+        'slide-up-fade': 'slide-up-fade 0.4s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'pulse-glow': 'pulse-glow 3s ease-in-out infinite',
       },
     },
   },

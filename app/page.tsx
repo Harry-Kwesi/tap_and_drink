@@ -6,6 +6,10 @@ import ProgressArc from '@/components/ProgressArc';
 import SettingsPanel from '@/components/SettingsPanel';
 import DrinkHistory from '@/components/DrinkHistory';
 import StreakBadge from '@/components/StreakBadge';
+import AiCoach from '@/components/AiCoach';
+import InsightsDashboard from '@/components/InsightsDashboard';
+import NlpLogInput from '@/components/NlpLogInput';
+import MotivationalBanner from '@/components/MotivationalBanner';
 import { usePushReminder } from '@/lib/usePushReminder';
 import {
   getSettings,
@@ -14,9 +18,16 @@ import {
   logDrink,
   saveSettings,
   undoLastDrink,
+  upsertDailyStats,
+  getRecentLogs,
   type AppSettings,
   type DrinkLog,
 } from '@/lib/db';
+import {
+  getHourlyPattern,
+  getPaceStatus,
+  type PaceInfo,
+} from '@/lib/ai/hydrationEngine';
 
 const AMOUNT_PER_TAP = 250;
 
@@ -27,10 +38,15 @@ export default function Home() {
   const [logs, setLogs]                 = useState<DrinkLog[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen]   = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [floats, setFloats]             = useState<FloatDrop[]>([]);
   const [goalHit, setGoalHit]           = useState(false);
   const [streak, setStreak]             = useState(0);
   const [undoFlash, setUndoFlash]       = useState(false);
+  const [refreshKey, setRefreshKey]     = useState(0);
+  const [paceInfo, setPaceInfo]         = useState<PaceInfo>({
+    status: 'no_data', diffMl: 0, expectedMl: 0, actualMl: 0,
+  });
   const dropIdRef = useRef(0);
 
   const { recordActivity } = usePushReminder(settings);
@@ -45,8 +61,27 @@ export default function Home() {
       setGoalHit(total >= s.dailyGoal);
       const str = await getStreak(s.dailyGoal);
       setStreak(str);
+
+      // Initial pace calculation
+      try {
+        const recentLogs = await getRecentLogs(7);
+        const pattern = getHourlyPattern(recentLogs);
+        setPaceInfo(getPaceStatus(drinks, pattern));
+      } catch { /* pace stays no_data */ }
+
+      // Ensure today's stats exist
+      await upsertDailyStats(s.dailyGoal);
     }
     init();
+  }, []);
+
+  // ── Update pace after logs change ──────────────────────────────────────────
+  const updatePace = useCallback(async (currentLogs: DrinkLog[]) => {
+    try {
+      const recentLogs = await getRecentLogs(7);
+      const pattern = getHourlyPattern(recentLogs);
+      setPaceInfo(getPaceStatus(currentLogs, pattern));
+    } catch { /* ignore */ }
   }, []);
 
   // ── SW → LOG_DRINK message ─────────────────────────────────────────────────
@@ -84,8 +119,15 @@ export default function Home() {
         const next = [...prev, newLog];
         const total = next.reduce((a, d) => a + d.amount, 0);
         if (total >= settings.dailyGoal) setGoalHit(true);
+        updatePace(next);
         return next;
       });
+
+      // Update daily stats
+      await upsertDailyStats(settings.dailyGoal);
+
+      // Trigger AI message refresh
+      setRefreshKey((k) => k + 1);
 
       if (floatCoords) {
         const did = ++dropIdRef.current;
@@ -93,7 +135,30 @@ export default function Home() {
         setTimeout(() => setFloats((f) => f.filter((d) => d.id !== did)), 950);
       }
     },
-    [settings, recordActivity]
+    [settings, recordActivity, updatePace]
+  );
+
+  // ── NLP Log ────────────────────────────────────────────────────────────────
+  const handleNlpLog = useCallback(
+    async (amount: number) => {
+      if (!settings) return;
+
+      const rid = await logDrink(amount);
+      const newLog: DrinkLog = { id: rid as number, timestamp: Date.now(), amount };
+      recordActivity();
+
+      setLogs((prev) => {
+        const next = [...prev, newLog];
+        const total = next.reduce((a, d) => a + d.amount, 0);
+        if (total >= settings.dailyGoal) setGoalHit(true);
+        updatePace(next);
+        return next;
+      });
+
+      await upsertDailyStats(settings.dailyGoal);
+      setRefreshKey((k) => k + 1);
+    },
+    [settings, recordActivity, updatePace]
   );
 
   // ── Undo ───────────────────────────────────────────────────────────────────
@@ -105,8 +170,11 @@ export default function Home() {
       const next = prev.filter((l) => l.id !== removed.id);
       const total = next.reduce((a, d) => a + d.amount, 0);
       setGoalHit(total >= settings.dailyGoal);
+      updatePace(next);
       return next;
     });
+    await upsertDailyStats(settings.dailyGoal);
+    setRefreshKey((k) => k + 1);
     setUndoFlash(true);
     setTimeout(() => setUndoFlash(false), 1400);
   }
@@ -118,6 +186,7 @@ export default function Home() {
     setSettings(next);
     const str = await getStreak(next.dailyGoal);
     setStreak(str);
+    await upsertDailyStats(next.dailyGoal);
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
@@ -147,6 +216,19 @@ export default function Home() {
 
         <div className="flex items-center gap-2">
           <StreakBadge streak={streak} />
+
+          {/* Insights toggle */}
+          <button
+            onClick={() => setInsightsOpen((v) => !v)}
+            aria-label={insightsOpen ? 'Hide insights' : 'Show AI insights'}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border
+                        transition-all duration-200 active:scale-90
+                        ${insightsOpen
+                          ? 'bg-water-500/20 border-water-500/40 text-water-400'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'}`}
+          >
+            <span className="text-sm">✨</span>
+          </button>
 
           {/* History toggle */}
           <button
@@ -232,9 +314,17 @@ export default function Home() {
           ))}
         </div>
 
-        <p className="mt-5 text-xs text-white/30 tracking-wide">
-          Tap the bottle every 250 ml you drink
-        </p>
+        {/* NLP Input */}
+        <NlpLogInput onLog={handleNlpLog} />
+
+        {/* Motivational Banner (replaces static tip text) */}
+        <MotivationalBanner
+          fillRatio={fillRatio}
+          totalToday={totalToday}
+          goal={goal}
+          streak={streak}
+          refreshKey={refreshKey}
+        />
 
         <div className="mt-3 flex items-center gap-2 w-full">
           <div className="flex-1 h-px bg-white/[0.07]" />
@@ -246,6 +336,13 @@ export default function Home() {
       {/* ── History drawer ── */}
       {historyOpen && <DrinkHistory logs={logs} onUndo={handleUndo} />}
 
+      {/* ── AI Insights panel ── */}
+      <InsightsDashboard
+        open={insightsOpen}
+        goal={goal}
+        onClose={() => setInsightsOpen(false)}
+      />
+
       {/* ── Settings panel ── */}
       {settings && (
         <SettingsPanel
@@ -255,6 +352,17 @@ export default function Home() {
           onSave={handleSave}
         />
       )}
+
+      {/* ── AI Coach widget ── */}
+      <AiCoach
+        fillRatio={fillRatio}
+        totalToday={totalToday}
+        goal={goal}
+        cups={cups}
+        streak={streak}
+        paceInfo={paceInfo}
+        refreshKey={refreshKey}
+      />
 
       {/* Bottom glow */}
       <div aria-hidden="true" className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none"

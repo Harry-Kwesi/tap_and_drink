@@ -127,3 +127,110 @@ html, body {
   from { background-position: 0% center; }
   to   { background-position: 200% center; }
 }
+
+/* ─── AI FEATURES ─────────────────────────────────────────────────────────── */
+
+/* ── Slide up + fade entrance ── */
+@keyframes slide-up-fade {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up-fade {
+  animation: slide-up-fade 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Sparkle icon rotate ── */
+.sparkle-icon {
+  display: inline-block;
+  animation: sparkle-pulse 3s ease-in-out infinite;
+}
+@keyframes sparkle-pulse {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  25%      { transform: scale(1.15) rotate(8deg); opacity: 0.9; }
+  50%      { transform: scale(1) rotate(-5deg); opacity: 1; }
+  75%      { transform: scale(1.1) rotate(3deg); opacity: 0.95; }
+}
+
+/* ── AI Coach button pulse ── */
+.ai-coach-btn {
+  animation: coach-pulse 3s ease-in-out infinite;
+}
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35); }
+  50%      { box-shadow: 0 4px 30px rgba(14, 165, 233, 0.55), 0 0 40px rgba(14, 165, 233, 0.15); }
+}
+
+/* ── AI Coach card gradient border ── */
+.ai-coach-card {
+  position: relative;
+}
+.ai-coach-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 1.1rem;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.3),
+    rgba(20, 184, 166, 0.15),
+    rgba(14, 165, 233, 0.3)
+  );
+  background-size: 200% 200%;
+  animation: gradient-shift 4s ease infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: -1;
+}
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* ── AI Avatar breathing glow ── */
+.ai-avatar {
+  animation: avatar-breathe 3s ease-in-out infinite;
+}
+@keyframes avatar-breathe {
+  0%, 100% { box-shadow: 0 0 12px rgba(14, 165, 233, 0.4); }
+  50%      { box-shadow: 0 0 20px rgba(14, 165, 233, 0.6), 0 0 40px rgba(14, 165, 233, 0.15); }
+}
+
+/* ── NLP input glow on focus ── */
+.nlp-input-wrapper:focus-within {
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* ── Crossfade for motivational banner ── */
+.crossfade-enter {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.crossfade-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+/* ── Heatmap bar entrance ── */
+@keyframes bar-grow {
+  0%   { transform: scaleY(0); }
+  100% { transform: scaleY(1); }
+}
+.heatmap-bar {
+  transform-origin: bottom;
+  animation: bar-grow 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Goal step transition ── */
+.goal-step {
+  animation: slide-up-fade 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Transition utilities ── */
+.duration-400 {
+  transition-duration: 400ms;
+}

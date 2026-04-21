@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-globals */
-const CACHE = 'tap-drink-v1';
+const CACHE = 'tap-drink-v2';
 const PRECACHE = ['/', '/manifest.json'];
 
 // ── Install ───────────────────────────────────────────────────────────────────
@@ -20,9 +20,22 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// ── Fetch (network-first for API, cache-first for assets) ─────────────────────
+// ── Fetch (Network-first for HTML, skip Next dev) ─────────────────────
 self.addEventListener('fetch', (e) => {
-  if (e.request.url.includes('/api/')) return; // skip API routes
+  const url = new URL(e.request.url);
+  
+  // Skip API routes, Next.js internal dev/build assets, and extensions
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next/') || url.protocol === 'chrome-extension:') return;
+
+  // Network-first for navigation (HTML)
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match('/'))
+    );
+    return;
+  }
+
+  // Cache-first for other assets
   e.respondWith(
     caches.match(e.request).then((hit) => hit ?? fetch(e.request))
   );

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import type { AppSettings } from '@/lib/db';
+import { getRecentLogs, getTodayDrinks } from '@/lib/db';
+import { getNextReminderDelay } from '@/lib/ai/smartScheduler';
 
 function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -19,16 +21,38 @@ export function usePushReminder(settings: AppSettings | null) {
   /** Update last-log timestamp (call after every drink tap) */
   const recordActivity = useCallback(() => {
     lastLogRef.current = Date.now();
-    resetTimer(settings?.reminderInterval ?? 60);
+    scheduleNextReminder();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.reminderInterval]);
+  }, [settings?.reminderInterval, settings?.smartReminders]);
 
-  function resetTimer(intervalMin: number) {
+  async function scheduleNextReminder() {
+    if (!settings) return;
+
+    let delayMs: number;
+
+    if (settings.smartReminders) {
+      try {
+        const [recentLogs, todayLogs] = await Promise.all([
+          getRecentLogs(7),
+          getTodayDrinks(),
+        ]);
+        const schedule = getNextReminderDelay(
+          recentLogs,
+          todayLogs,
+          settings.reminderInterval
+        );
+        delayMs = schedule.nextReminderMs;
+        console.log(`[Smart Reminder] ${schedule.reason} (${Math.round(delayMs / 60000)} min)`);
+      } catch {
+        // Fallback on error
+        delayMs = settings.reminderInterval * 60 * 1000;
+      }
+    } else {
+      delayMs = settings.reminderInterval * 60 * 1000;
+    }
+
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(
-      () => fireReminder(),
-      intervalMin * 60 * 1000
-    );
+    timerRef.current = setTimeout(() => fireReminder(), delayMs);
   }
 
   async function fireReminder() {
@@ -42,7 +66,11 @@ export function usePushReminder(settings: AppSettings | null) {
           body: "You haven't logged water recently. Stay on track!",
         }),
       });
-      if (res.ok) return; // server push handled it
+      if (res.ok) {
+        // Re-schedule next reminder after push
+        scheduleNextReminder();
+        return;
+      }
     } catch { /* fallback below */ }
 
     // 2. Fallback: browser Notification API (works when tab is open/backgrounded)
@@ -53,6 +81,9 @@ export function usePushReminder(settings: AppSettings | null) {
         tag: 'hydration-reminder',
       });
     }
+
+    // Re-schedule next reminder
+    scheduleNextReminder();
   }
 
   /** Subscribe to Web Push and post subscription to server */
@@ -91,11 +122,11 @@ export function usePushReminder(settings: AppSettings | null) {
   // Start the reminder timer whenever interval changes
   useEffect(() => {
     if (!settings) return;
-    resetTimer(settings.reminderInterval);
+    scheduleNextReminder();
     subscribeToPush();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings?.reminderInterval]);
+  }, [settings?.reminderInterval, settings?.smartReminders]);
 
   return { recordActivity };
 }
